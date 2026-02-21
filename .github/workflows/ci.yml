@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # ネイティブテスト
+  # ──────────────────────────────────────────────────────────────
+  test:
+    name: cargo test (native)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install protoc (Protocol Buffers compiler)
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+  # ──────────────────────────────────────────────────────────────
+  # WASM ビルド
+  # ──────────────────────────────────────────────────────────────
+  wasm-build:
+    name: wasm-pack build (nodejs)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install protoc (Protocol Buffers compiler)
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Build mosh-wasm (nodejs target)
+        run: |
+          wasm-pack build \
+            crates/mosh-wasm \
+            --target nodejs \
+            --out-dir ../../mosh-wasm-pkg \
+            --release
+
+      - name: Show build output
+        run: |
+          echo "Built files:"
+          ls -lh mosh-wasm-pkg/
+
+      - name: Upload mosh-wasm-pkg as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mosh-wasm-pkg-${{ github.sha }}
+          path: mosh-wasm-pkg/
+          retention-days: 30
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────
+  # cargo check (wasm32 ターゲット)
+  # ──────────────────────────────────────────────────────────────
+  check-wasm32:
+    name: cargo check (wasm32)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install protoc (Protocol Buffers compiler)
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check workspace (wasm32 target)
+        run: cargo check --workspace --target wasm32-unknown-unknown
+
+  # ──────────────────────────────────────────────────────────────
+  # cargo clippy (lint)
+  # ──────────────────────────────────────────────────────────────
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain (stable + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install protoc (Protocol Buffers compiler)
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
