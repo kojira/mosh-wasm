@@ -1,0 +1,14 @@
+[package]
+name        = "mosh-transport"
+version.workspace   = true
+edition.workspace   = true
+license.workspace   = true
+authors.workspace   = true
+description = "mosh UDP transport layer: Fragment/Reassembly and packet structures"
+
+[dependencies]
+mosh-crypto = { workspace = true }
+mosh-proto  = { workspace = true }
+
+[lib]
+crate-type = ["lib"]

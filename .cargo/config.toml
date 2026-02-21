@@ -1,0 +1,28 @@
+# .cargo/config.toml
+# mosh-wasm プロジェクト向け Cargo 設定
+#
+# 注意:
+#   デフォルトターゲットを wasm32 に設定しない。
+#   - `cargo test --workspace` は native（arm64/x86_64）でテストする
+#   - `wasm-pack build` が wasm32 ターゲットを自動的に指定する
+#
+# ビルド方法:
+#   native テスト:  cargo test --workspace
+#   WASM ビルド:    wasm-pack build crates/mosh-wasm --target nodejs
+
+# =============================================================
+# wasm32-unknown-unknown ターゲット向けの最適化フラグ
+# =============================================================
+[target.wasm32-unknown-unknown]
+rustflags = [
+    # WASM 最適化レベル 3
+    "-C", "opt-level=3",
+    # bulk-memory: memcpy/memset の高速化
+    "-C", "target-feature=+bulk-memory",
+]
+
+# =============================================================
+# ビルドキャッシュ設定
+# =============================================================
+# [build]
+# rustc-wrapper = "sccache"  # sccache があれば有効化してビルド高速化

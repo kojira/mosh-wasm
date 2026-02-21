@@ -1,0 +1,15 @@
+[package]
+name        = "mosh-ssp"
+version.workspace   = true
+edition.workspace   = true
+license.workspace   = true
+authors.workspace   = true
+description = "mosh State Synchronization Protocol (SSP) core state machine"
+
+[dependencies]
+mosh-crypto    = { workspace = true }
+mosh-proto     = { workspace = true }
+mosh-transport = { workspace = true }
+
+[lib]
+crate-type = ["lib"]

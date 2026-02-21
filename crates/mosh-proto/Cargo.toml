@@ -1,0 +1,16 @@
+[package]
+name        = "mosh-proto"
+version.workspace   = true
+edition.workspace   = true
+license.workspace   = true
+authors.workspace   = true
+description = "Protocol Buffers definitions for mosh transport protocol"
+
+[dependencies]
+prost = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
+
+[lib]
+crate-type = ["lib"]

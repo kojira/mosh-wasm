@@ -1,0 +1,37 @@
+// mosh の SSP Instruction プロトコルバッファ定義
+// mosh C++ 実装 (src/include/transportinstruction.proto) に準拠
+//
+// SSP (State Synchronization Protocol) の制御メッセージ。
+// mosh では、送信側の「状態差分」と ACK 情報を一つの Instruction に格納する。
+
+syntax = "proto2";
+
+option optimize_for = LITE_RUNTIME;
+
+package transport_buffers;
+
+message Instruction {
+    // SSP プロトコルバージョン (= 2)
+    optional uint32 protocol_version = 1;
+
+    // 送信側の前の状態番号（差分の起点）
+    // 0 の場合は初回送信（完全な状態）
+    optional uint64 old_num = 2;
+
+    // 送信側の新しい状態番号
+    optional uint64 new_num = 3;
+
+    // 受信した最後の状態番号（ACK）
+    optional uint64 ack_num = 4;
+
+    // これより古い状態は破棄してよい（スペース節約）
+    optional uint64 throwaway_num = 5;
+
+    // 状態差分データ（raw bytes）
+    // バイトストリームモードでは完全なバイト列を格納する
+    optional bytes diff = 6;
+
+    // Chaff（ダミーデータ、将来の拡張用）
+    // 現在の実装では送信しない
+    optional bytes chaff = 7;
+}

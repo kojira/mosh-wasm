@@ -1,0 +1,38 @@
+[package]
+name        = "mosh-wasm"
+version.workspace   = true
+edition.workspace   = true
+license.workspace   = true
+authors.workspace   = true
+description = "WASM entry point for mosh-wasm: wasm-bindgen exports for VS Code extension"
+
+[lib]
+# cdylib: WASM 動的ライブラリ（wasm-pack でビルド）
+# rlib:   native テスト用
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mosh-crypto    = { workspace = true }
+mosh-proto     = { workspace = true }
+mosh-transport = { workspace = true }
+mosh-ssp       = { workspace = true }
+mosh-stream    = { workspace = true }
+
+wasm-bindgen          = { workspace = true }
+js-sys                = { workspace = true }
+wasm-bindgen-futures  = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+
+[dependencies.console_error_panic_hook]
+workspace = true
+optional  = true
+
+[features]
+default = ["console_error_panic_hook"]
+
+[package.metadata.wasm-pack.profile.release]
+# wasm-opt でさらにサイズ最適化
+# --enable-bulk-memory: Rust コンパイラが生成する memory.fill/memory.copy 命令を許可
+# --enable-mutable-globals: wasm-bindgen が使用する mutable globals を許可
+wasm-opt = ["-Oz", "--enable-bulk-memory", "--enable-mutable-globals", "--enable-nontrapping-float-to-int"]

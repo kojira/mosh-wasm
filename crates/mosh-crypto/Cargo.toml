@@ -1,0 +1,21 @@
+[package]
+name        = "mosh-crypto"
+version.workspace   = true
+edition.workspace   = true
+license.workspace   = true
+authors.workspace   = true
+description = "AES-128-OCB3 cryptographic primitives for mosh protocol"
+
+[dependencies]
+ocb3      = { workspace = true }
+aes       = { workspace = true }
+aead      = { workspace = true }
+base64    = { workspace = true }
+getrandom = { workspace = true }
+
+[features]
+default = []
+std     = []
+
+[lib]
+crate-type = ["lib"]

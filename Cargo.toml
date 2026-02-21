@@ -1,0 +1,86 @@
+[workspace]
+members = [
+    "crates/mosh-crypto",
+    "crates/mosh-proto",
+    "crates/mosh-transport",
+    "crates/mosh-ssp",
+    "crates/mosh-stream",
+    "crates/mosh-wasm",
+]
+resolver = "2"
+
+# ==============================================================
+# ワークスペース共通依存バージョン
+# 各クレートは workspace = true で参照する
+# ==============================================================
+[workspace.dependencies]
+
+# --- 暗号 (RustCrypto) ---
+# AES-128-OCB3 AEAD 実装 (pure Rust, no_std 対応)
+# ocb3 0.1.0: 安定版。aes 0.8 / crypto-common 0.1 と完全互換。
+# 注: ocb3 0.2.x は RC 版で aes 0.9-rc 必要のため使用しない
+ocb3      = { version = "0.1",  default-features = false }
+aes       = { version = "0.8",  default-features = false }
+aead      = { version = "0.5",  default-features = false, features = ["alloc"] }
+# WASM で乱数を安全に生成する（getrandom の js feature が必須）
+getrandom = { version = "0.2", features = ["js"] }
+
+# --- Protocol Buffers ---
+# prost: no_std + alloc 対応、wasm32 でビルド可能
+prost       = { version = "0.14", default-features = false, features = ["derive"] }
+prost-types = { version = "0.14", default-features = false }
+# ビルド時のみ: .proto → Rust コード生成
+prost-build = { version = "0.14" }
+
+# --- WASM バインディング ---
+wasm-bindgen         = { version = "0.2" }
+js-sys               = { version = "0.3" }
+web-sys              = { version = "0.3", features = ["console"] }
+wasm-bindgen-futures = { version = "0.4" }
+
+# --- JSON / シリアライズ (統計情報出力用) ---
+serde      = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+
+# --- Base64 (mosh 鍵のデコード) ---
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
+
+# --- デバッグ用 ---
+console_error_panic_hook = { version = "0.1" }
+
+# --- 内部クレート間の依存 ---
+mosh-crypto    = { path = "crates/mosh-crypto",    version = "0.1" }
+mosh-proto     = { path = "crates/mosh-proto",     version = "0.1" }
+mosh-transport = { path = "crates/mosh-transport", version = "0.1" }
+mosh-ssp       = { path = "crates/mosh-ssp",       version = "0.1" }
+mosh-stream    = { path = "crates/mosh-stream",    version = "0.1" }
+
+# ==============================================================
+# ワークスペース共通メタデータ
+# ==============================================================
+[workspace.package]
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["vscode-remote-mosh contributors"]
+license     = "GPL-3.0"
+repository  = "https://github.com/your-org/vscode-remote-mosh"
+description = "mosh protocol implementation in Rust/WASM for VS Code Remote-Mosh"
+
+# ==============================================================
+# リリースビルドの最適化（WASM サイズ削減）
+# ==============================================================
+[profile.release]
+opt-level     = 3
+lto           = true       # Link Time Optimization（バイナリサイズ削減）
+codegen-units = 1          # 最大最適化（ビルド時間は増加）
+panic         = "abort"    # unwind 不要（WASM でサイズ削減）
+strip         = true       # シンボル除去（native のみ）
+
+[profile.release.package."*"]
+opt-level = 3
+
+# WASM 専用: サイズ最優先（速度よりサイズ）
+[profile.wasm-release]
+inherits  = "release"
+opt-level = "s"   # size 最適化
+panic     = "abort"

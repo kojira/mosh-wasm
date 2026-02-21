@@ -1,0 +1,13 @@
+[package]
+name        = "mosh-stream"
+version.workspace   = true
+edition.workspace   = true
+license.workspace   = true
+authors.workspace   = true
+description = "Byte stream abstraction layer over mosh SSP"
+
+[dependencies]
+mosh-ssp = { workspace = true }
+
+[lib]
+crate-type = ["lib"]
