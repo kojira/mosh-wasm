@@ -1,0 +1,3 @@
+/target
+mosh-wasm-pkg/
+*.wasm
