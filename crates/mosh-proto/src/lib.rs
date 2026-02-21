@@ -130,7 +130,7 @@ impl Instruction {
 
     /// ペイロードデータを持つか（diff フィールドが Some かつ非空）
     pub fn has_diff(&self) -> bool {
-        self.diff.as_ref().map_or(false, |d| !d.is_empty())
+        self.diff.as_ref().is_some_and(|d| !d.is_empty())
     }
 }
 
