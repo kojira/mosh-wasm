@@ -415,4 +415,195 @@ mod tests {
         assert!(session.rto_ms >= RTO_MIN_MS);
         assert!(session.rto_ms <= RTO_MAX_MS);
     }
+
+    /// SSP 双方向通信シミュレーションテスト
+    /// クライアント↔サーバー間の完全な送受信フローを検証する
+    #[test]
+    fn test_bidirectional_ssp_communication() {
+        let mut client = SspSession::new();
+        let mut server = SspSession::new();
+
+        let mut now_ms: u64 = 1000;
+
+        // === クライアント → サーバー ===
+        let client_payload = b"Hello from client!".to_vec();
+        client.push_payload(client_payload.clone());
+
+        let client_packets = client.tick(now_ms);
+        assert_eq!(client_packets.len(), 1, "クライアントが1パケット生成すべき");
+
+        // サーバーで受信処理
+        let instr = Instruction::decode_from_bytes(&client_packets[0]).unwrap();
+        let received = server.recv_instruction(&instr, now_ms + 50);
+        assert_eq!(received, Some(client_payload.clone()), "サーバーがクライアントのデータを受信");
+
+        now_ms += 100;
+
+        // === サーバー → クライアント（ACK + データ）===
+        let server_payload = b"Hello from server!".to_vec();
+        server.push_payload(server_payload.clone());
+
+        let server_packets = server.tick(now_ms);
+        assert!(!server_packets.is_empty(), "サーバーが返信パケットを生成");
+
+        // クライアントで ACK + データを受信
+        let server_instr = Instruction::decode_from_bytes(&server_packets[0]).unwrap();
+        let server_ack_num = server_instr.ack_num_or_zero();
+        assert_eq!(server_ack_num, 1, "サーバーがクライアントの Instruction #1 を ACK");
+
+        let client_received = client.recv_instruction(&server_instr, now_ms + 50);
+        assert_eq!(client_received, Some(server_payload.clone()), "クライアントがサーバーのデータを受信");
+
+        // クライアントの pending が解消されているか確認
+        assert_eq!(client.stats().pending_count, 0, "ACK 受信後 pending はゼロ");
+    }
+
+    /// 複数の連続したペイロード送信テスト
+    #[test]
+    fn test_multiple_sequential_payloads() {
+        let mut sender = SspSession::new();
+        let mut receiver = SspSession::new();
+
+        let payloads: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec![
+            b"First message".to_vec(),
+            b"Second message".to_vec(),
+            b"Third message".to_vec(),
+        ];
+
+        let mut now_ms: u64 = 1000;
+        let mut received_payloads = alloc::vec::Vec::new();
+
+        for payload in &payloads {
+            sender.push_payload(payload.clone());
+            let packets = sender.tick(now_ms);
+            now_ms += 10;
+
+            for pkt_bytes in &packets {
+                let instr = Instruction::decode_from_bytes(pkt_bytes).unwrap();
+                if let Some(data) = receiver.recv_instruction(&instr, now_ms) {
+                    received_payloads.push(data);
+                }
+            }
+        }
+
+        assert_eq!(received_payloads.len(), payloads.len(), "すべてのペイロードが受信されるべき");
+        for (expected, actual) in payloads.iter().zip(received_payloads.iter()) {
+            assert_eq!(expected, actual, "ペイロード内容が一致すべき");
+        }
+    }
+
+    /// 再送タイムアウトのテスト
+    #[test]
+    fn test_retransmission_on_timeout() {
+        let mut session = SspSession::new();
+
+        // データ送信
+        session.push_payload(b"retransmit me".to_vec());
+        let initial_packets = session.tick(0);
+        assert_eq!(initial_packets.len(), 1);
+
+        // RTO 以内では再送しない
+        let no_retransmit = session.tick(500); // 500ms < RTO_INITIAL_MS (1000ms)
+        // ハートビートでもないのでパケット生成なし
+        assert!(no_retransmit.is_empty(), "RTO前は再送しないべき");
+
+        // RTO を超えたので再送
+        let retransmit_packets = session.tick(1100); // 1100ms > RTO_INITIAL_MS
+        assert!(!retransmit_packets.is_empty(), "RTO超過後に再送すべき");
+    }
+
+    /// ACK 後の再送停止テスト
+    #[test]
+    fn test_no_retransmit_after_ack() {
+        let mut session = SspSession::new();
+
+        // データ送信
+        session.push_payload(b"ack me".to_vec());
+        let _ = session.tick(0);
+        assert_eq!(session.stats().pending_count, 1);
+
+        // ACK 受信
+        let ack = Instruction::new_ack(1, 0);
+        session.recv_instruction(&ack, 200);
+        assert_eq!(session.stats().pending_count, 0, "ACK後 pending はゼロ");
+
+        // RTO 超過後も再送しない（pending がないから）
+        let packets = session.tick(2000);
+        // ハートビートのみが生成される場合あり
+        for pkt_bytes in &packets {
+            let instr = Instruction::decode_from_bytes(pkt_bytes).unwrap();
+            // 再送パケットではなく ACK only のハートビートであるべき
+            assert_eq!(instr.new_num_or_zero(), 0, "ACK後はハートビートのみ");
+        }
+    }
+
+    /// throwaway_num の伝播テスト
+    #[test]
+    fn test_throwaway_num_propagation() {
+        let mut client = SspSession::new();
+        let mut server = SspSession::new();
+
+        // クライアントが複数のパケットを送信
+        for i in 0..3u8 {
+            client.push_payload(alloc::vec![i]);
+            let packets = client.tick(1000 + i as u64 * 100);
+            for pkt_bytes in &packets {
+                let instr = Instruction::decode_from_bytes(pkt_bytes).unwrap();
+                server.recv_instruction(&instr, 1050 + i as u64 * 100);
+            }
+        }
+
+        // サーバーの throwaway_num がクライアントに伝達される
+        server.push_payload(b"ack".to_vec());
+        let server_packets = server.tick(1400);
+        assert!(!server_packets.is_empty());
+
+        let instr = Instruction::decode_from_bytes(&server_packets[0]).unwrap();
+        let ack_num = instr.ack_num_or_zero();
+        assert_eq!(ack_num, 3, "サーバーがクライアントの最新 Instruction を ACK");
+    }
+
+    /// RTT 収束テスト - 複数サンプルで SRTT が収束することを確認
+    #[test]
+    fn test_rtt_convergence() {
+        let mut session = SspSession::new();
+
+        // 10回の RTT サンプルを収集
+        for i in 0..10u64 {
+            session.push_payload(b"probe".to_vec());
+            let _ = session.tick(i * 200);
+
+            let ack = Instruction::new_ack(i + 1, 0);
+            session.recv_instruction(&ack, i * 200 + 100); // 100ms RTT
+        }
+
+        // SRTT が 100ms 付近に収束するはず（完全には収束しないが合理的な範囲）
+        let stats = session.stats();
+        assert!(stats.srtt_ms > 0.0, "SRTT は正値であるべき");
+        assert!(stats.srtt_ms < 200.0, "SRTT は 200ms 以下のはず");
+        assert!(stats.rto_ms >= RTO_MIN_MS, "RTO は最小値以上");
+        assert!(stats.rto_ms <= RTO_MAX_MS, "RTO は最大値以下");
+    }
+
+    /// ハートビート間隔検証テスト
+    #[test]
+    fn test_heartbeat_interval_exact() {
+        let mut session = SspSession::new();
+        let base_ms: u64 = 10_000;
+
+        // ハートビートを送信（last_send_ms が更新される）
+        let _ = session.tick(base_ms);
+
+        // HEARTBEAT_INTERVAL_MS - 1 ms では不要
+        assert!(
+            !session.needs_heartbeat(base_ms + HEARTBEAT_INTERVAL_MS - 1),
+            "インターバル未満ではハートビート不要"
+        );
+
+        // HEARTBEAT_INTERVAL_MS ms では必要
+        assert!(
+            session.needs_heartbeat(base_ms + HEARTBEAT_INTERVAL_MS),
+            "インターバル経過後はハートビート必要"
+        );
+    }
 }
